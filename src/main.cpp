@@ -1,12 +1,14 @@
 #include <M5Unified.h>
 #include "config.h"
 #include "WeatherStation.h"
+#include "WeatherStationData.h"
 #include "WiFiManager.h"
 #include "TemperatureSensor.h"
 #include "NeoPixelController.h"
 #include "DropDetector.h"
 #include "Thermostat.h"
 #include "AudioPlayer.h"
+#include "WebInterface.h"
 
 // ============================================
 // DEBUG FLAGS - Set to true to enable testing
@@ -20,28 +22,27 @@
 #define DEBUG_AUDIO_PLAYER false
 #define DEBUG_THERMOSTAT false
 
-// Weather stations - easily editable!
-// Note: Ilulissat (Greenland) - Jakobshavn Glacier, one of fastest melting
-//       El Calafate (Patagonia) - Near Upsala & Perito Moreno glaciers
-//       Hong Kong - High humidity reference point
-//       Shenzhen - Local reference station
-WeatherStation stations[] = {
-  {"Ilulissat", 69.2198, -51.0986, "America/Godthab", -2.0, 50.0, 0.0},                    // Greenland glacier
-  {"El Calafate", -50.3375, -72.2647, "America/Argentina/Rio_Gallegos", -2.0, 50.0, 0.0},  // Patagonia glacier
-  {"Hong Kong", 22.3193, 114.1694, "Asia/Hong_Kong", 26.0, 75.0, 0.0},                     // Humid reference
-  {"Shenzhen", 22.5431, 114.0579, "Asia/Shanghai", 14.0, 75.0, 0.0}                        // Local station
-}; 
-
-const int NUM_STATIONS = sizeof(stations) / sizeof(stations[0]);
+// Global variables
 int glacierIndex = 0;      // Which glacier to display (0 or 1)
-const int LOCAL_INDEX = 3; // Shenzhen is local reference
 
 // Station references for clarity
 WeatherStation& currentGlacierStation = stations[0];  // Can be changed via glacierIndex
-WeatherStation& localStation = stations[LOCAL_INDEX];
+WeatherStation& localStation = stations[LOCAL_SHENZHEN];
 
 // Drop counter
 int dropCount = 0;
+
+// Setpoint mode: -1 = manual, 0-3 = linked to station index
+int setpointMode = -1;  // Start in manual mode
+float manualSetpoint = MANUAL_SETPOINT;  // Current setpoint value
+
+// Hardware status tracking
+bool hwStatusTempSensor = false;
+bool hwStatusDropDetector = false;
+bool hwStatusNeoPixel = false;
+bool hwStatusAudioPlayer = false;
+bool hwStatusWiFi = false;
+bool hwStatusWebServer = false;
 
 // Display update timing (non-blocking)
 unsigned long lastDisplayUpdate = 0;
@@ -91,18 +92,18 @@ void setup() {
   #if !GLOBAL_DEBUG || DEBUG_TEMPERATURE
     M5.Display.setCursor(5, y); y += 12;
     M5.Display.print("1.TempSens.");
-    if (tempSensor.begin()) {
+    hwStatusTempSensor = tempSensor.begin();
+    if (hwStatusTempSensor) {
       M5.Display.println("OK");
     } else {
       M5.Display.setTextColor(RED);
       M5.Display.println("FAIL");
       M5.Display.setTextColor(GREEN);
-      #if GLOBAL_DEBUG
-        delay(2000);
-        neoPixels.pulseRedError();  // Stop in debug mode
-      #endif
+      // Continue anyway - graceful degradation
       hardwareOK = false;
     }
+  #else
+    hwStatusTempSensor = true;  // Assume OK if not tested
   #endif
   
   // Drop Detector
@@ -110,14 +111,18 @@ void setup() {
     M5.Display.setCursor(5, y); y += 12;
     M5.Display.print("2.DropSens.");
     dropDetector.begin();
+    hwStatusDropDetector = true;
     M5.Display.println("OK");
+  #else
+    hwStatusDropDetector = true;  // Assume OK if not tested
   #endif
   
   // NeoPixels
   #if !GLOBAL_DEBUG || DEBUG_NEOPIXEL
     M5.Display.setCursor(5, y); y += 12;
     M5.Display.print("3.NeoPix...");
-    if (neoPixels.begin()) {
+    hwStatusNeoPixel = neoPixels.begin();
+    if (hwStatusNeoPixel) {
       neoPixels.clear();
       neoPixels.show();
       M5.Display.println("OK");
@@ -125,12 +130,11 @@ void setup() {
       M5.Display.setTextColor(RED);
       M5.Display.println("FAIL");
       M5.Display.setTextColor(GREEN);
-      #if GLOBAL_DEBUG
-        delay(2000);
-        while(true) { delay(1000); }  // Stop (can't pulse LEDs if they failed)
-      #endif
+      // Continue anyway - graceful degradation
       hardwareOK = false;
     }
+  #else
+    hwStatusNeoPixel = true;  // Assume OK if not tested
   #endif
   
   // WiFi
@@ -139,7 +143,8 @@ void setup() {
     M5.Display.print("4.WiFi.....");
     wifiManager.begin();
     if (wifiManager.isEnabled()) {
-      if (wifiManager.connect()) {
+      hwStatusWiFi = wifiManager.connect();
+      if (hwStatusWiFi) {
         M5.Display.println("OK");
         wifiManager.fetchWeather(stations, NUM_STATIONS);
       } else {
@@ -148,28 +153,31 @@ void setup() {
         M5.Display.setTextColor(GREEN);
       }
     } else {
+      hwStatusWiFi = false;
       M5.Display.setTextColor(YELLOW);
       M5.Display.println("DIS");
       M5.Display.setTextColor(GREEN);
     }
+  #else
+    hwStatusWiFi = false;  // Not tested in debug mode
   #endif
   
   // Audio Player
   #if !GLOBAL_DEBUG || DEBUG_AUDIO_PLAYER
     M5.Display.setCursor(5, y); y += 12;
     M5.Display.print("5.AudioPlayer.");
-    if (audioPlayer.begin()) {
+    hwStatusAudioPlayer = audioPlayer.begin();
+    if (hwStatusAudioPlayer) {
       M5.Display.println("OK");
     } else {
       M5.Display.setTextColor(RED);
       M5.Display.println("FAIL");
       M5.Display.setTextColor(GREEN);
-      #if GLOBAL_DEBUG
-        delay(2000);
-        neoPixels.pulseRedError();  // Stop in debug mode
-      #endif
+      // Continue anyway - graceful degradation
       hardwareOK = false;
     }
+  #else
+    hwStatusAudioPlayer = true;  // Assume OK if not tested
   #endif
   
   // Thermostat
@@ -180,18 +188,33 @@ void setup() {
     M5.Display.println("OK");
   #endif
   
+  // Web Server (always start in AP mode)
+  #if !GLOBAL_DEBUG
+    M5.Display.setCursor(5, y); y += 12;
+    M5.Display.print("7.WebServer...");
+    hwStatusWebServer = webInterface.begin(WEBSERVER_ENABLED);
+    if (hwStatusWebServer) {
+      M5.Display.println("OK");
+    } else {
+      M5.Display.setTextColor(YELLOW);
+      M5.Display.println("FAIL");
+      M5.Display.setTextColor(GREEN);
+    }
+  #else
+    hwStatusWebServer = false;  // Not tested in debug mode
+  #endif
+  
   M5.Display.setCursor(5, y); y += 15;
   M5.Display.setTextSize(1.4);
   
-  // Check if any component failed (only stop in normal mode)
-  #if !GLOBAL_DEBUG
-    if (!hardwareOK) {
-      M5.Display.setTextColor(RED);
-      M5.Display.println("HARDWARE ERROR!");
-      delay(2000);
-      neoPixels.pulseRedError();  // Never returns
-    }
-  #endif
+  // Display hardware status summary
+  if (!hardwareOK) {
+    M5.Display.setTextColor(YELLOW);
+    M5.Display.println("Some HW failed");
+    M5.Display.setTextColor(WHITE);
+    M5.Display.println("Running anyway!");
+    delay(2000);
+  }
   
   M5.Display.setTextColor(WHITE);
   M5.Display.println("ALL READY!");
@@ -202,16 +225,34 @@ void setup() {
   // ==================================================
   // PROGRAM INITIALIZATION
   // ==================================================
-  // 1. Set thermostat setpoint to glacier temperature
-  thermostat.setSetPoint(currentGlacierStation.temperature);
   
-  // 2. Set reactivate temperature from config
+  // Set thermostat setpoint to manual default (not linked to station yet)
+  thermostat.setSetPoint(manualSetpoint);
+  
+  // Set reactivate temperature from config
   thermostat.setReactivateTemp(REACTIVATE_TEMP);
   
-  // 3. Start cooling immediately
+  // Start cooling immediately
   thermostat.turnOn();
   
-  delay(2000);
+  // Display web server access info
+  M5.Display.fillScreen(BLACK);
+  M5.Display.setTextSize(1.2);
+  M5.Display.setTextColor(CYAN);
+  M5.Display.setCursor(5, 5);
+  M5.Display.println("Web Interface:");
+  M5.Display.setTextColor(WHITE);
+  M5.Display.setCursor(5, 25);
+  M5.Display.print("AP: ");
+  M5.Display.println(webInterface.getAPSSID());
+  M5.Display.setCursor(5, 40);
+  M5.Display.print("IP: ");
+  M5.Display.println(webInterface.getAPIP().toString());
+  M5.Display.setCursor(5, 55);
+  M5.Display.setTextColor(YELLOW);
+  M5.Display.println("Pass: " + String(WEBSERVER_AP_PASSWORD));
+  
+  delay(3000);
   
   // M5.Display.setTextSize(2);
   // M5.Display.fillScreen(BLACK);
@@ -300,8 +341,11 @@ void loop() {
   // Update weather every 5 minutes (only if WiFi connected)
   if (wifiManager.shouldUpdate()) {
     wifiManager.fetchWeather(stations, NUM_STATIONS);
-    // Update thermostat setpoint with new glacier temperature
-    thermostat.setSetPoint(currentGlacierStation.temperature);
+    // Update thermostat setpoint only if linked to a station
+    if (setpointMode >= 0 && setpointMode < NUM_STATIONS) {
+      manualSetpoint = stations[setpointMode].temperature;
+      thermostat.setSetPoint(manualSetpoint);
+    }
   }
   
   // ==================================================
@@ -309,30 +353,25 @@ void loop() {
   // ==================================================
   
   // Update display only periodically (non-blocking)
-  if (currentMillis - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
+  // Skip display updates during LED fade for smooth animation
+  if (currentMillis - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL && !neoPixels.isFading()) {
     lastDisplayUpdate = currentMillis;
     displaySystemStatus(cachedPeltierTemperature);
   }
   
-  // LCD button (BtnA - button under the display) to toggle WiFi or refresh
+  // LCD button (BtnA - button under the display) simulates drop event
   if (M5.BtnA.wasPressed()) {
-    if (wifiManager.isConnected()) {
-      // If connected, refresh weather data
-      wifiManager.fetchWeather(stations, NUM_STATIONS);
-    } else if (wifiManager.isEnabled()) {
-      // If WiFi enabled but not connected, retry connection
-      wifiManager.connect();
-    } else {
-      // If WiFi disabled, enable it and connect
-      wifiManager.enable();
-      M5.Display.fillScreen(BLACK);
-      M5.Display.setCursor(10, 10);
-      M5.Display.println("WiFi Enabled");
-      delay(1000);
-      if (wifiManager.connect()) {
-        wifiManager.fetchWeather(stations, NUM_STATIONS);
-      }
-    }
+    // Simulate drop detection!
+    dropCount++; // Increment drop counter
+    
+    // 1. Trigger LED fade cycle (full white, then fade to black as it cools)
+    neoPixels.onDropDetected(cachedPeltierTemperature, thermostat.getSetPoint());
+    
+    // 2. Play audio sample
+    audioPlayer.playDropSound();
+    
+    // 3. Force peltier to reactivate immediately
+    thermostat.forceActivate();
   }
   
   // COMMENTED: WiFi disable functionality

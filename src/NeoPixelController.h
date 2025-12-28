@@ -10,6 +10,7 @@ private:
   Adafruit_NeoPixel strip;
   int pin;
   int numLeds;
+  bool initialized;
   
   // Drop-activated fade state
   float dropTemperature;     // Temperature when drop was detected
@@ -26,6 +27,7 @@ public:
     : strip(ledCount, ledPin, NEO_GRB + NEO_KHZ800),
       pin(ledPin),
       numLeds(ledCount),
+      initialized(false),
       dropTemperature(0.0),
       glacierTemperature(0.0),
       fadeActive(false),
@@ -38,7 +40,13 @@ public:
     strip.begin();
     strip.show(); // Initialize all pixels to 'off'
     strip.setBrightness(255); // Always use max brightness, we'll scale colors instead
+    initialized = true;
     return true;  // Adafruit_NeoPixel::begin() doesn't fail, always returns successfully
+  }
+  
+  // Check if hardware is working
+  bool isInitialized() const {
+    return initialized;
   }
   
   // Get number of LEDs
@@ -62,11 +70,13 @@ public:
   
   // Update the strip (must call this to show changes)
   void show() {
+    if (!initialized) return;
     strip.show();
   }
   
   // Clear all pixels
   void clear() {
+    if (!initialized) return;
     strip.clear();
   }
   
@@ -158,16 +168,14 @@ public:
     float scaledBrightness = ratio * 255.0 * (NEOPIXEL_BRIGHTNESS / 255.0);
     uint8_t whiteLevel = (uint8_t)scaledBrightness;
     
-    // DEBUG: Print every 500ms
-    static unsigned long lastPrint = 0;
-    if (millis() - lastPrint > 500) {
-      Serial.printf("Fade: t=%lu, ratio=%.3f, white=%d\n", elapsed, ratio, whiteLevel);
-      lastPrint = millis();
-    }
-    
     // Set all LEDs to white with calculated brightness
     fill(whiteLevel, whiteLevel, whiteLevel);
     show();
+  }
+  
+  // Check if fade is currently active
+  bool isFading() const {
+    return timerFadeActive;
   }
   
   // Startup system check - R/G/B/White sequence, 1 second each

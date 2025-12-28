@@ -35,11 +35,16 @@
 #define WIFI_ENABLED    false  // Set to false to run without WiFi (uses preset values)
 #define WIFI_RETRY_INTERVAL 60000  // Retry WiFi connection every 60 seconds if failed
 
+// Web Server settings
+#define WEBSERVER_ENABLED true           // Enable web interface
+#define WEBSERVER_AP_PASSWORD "meteorite123"  // Access Point password (min 8 chars)
+
 // Thermostat settings
 #define THERMOSTAT_HYSTERESIS 0.5  // °C (deprecated - using REACTIVATE_TEMP instead)
-#define REACTIVATE_TEMP 13.0       // °C - Temperature to restart cooling after ice melts (should be higher than the dew point at the local station). This should be the local temperature, minus a margin because it will otherwise converge very slowly. Also, because I dont have a thermometer at the exact location of the setup (even if connected to the local weather station, nothing guarantees that the temperature there is the same as inside the device).
-#define DURATION_GLACIER_FREEZING 240000  // milliseconds - Keep cooling after reaching glacier temp. For instance, 5 minutes = 300000 ms. For more ice, we can keep it longer, for instance 15 minutes = 900000 ms.
-#define REACTIVATE_TIMER 900000     // milliseconds - Auto-restart cooling after this time. 
+#define MANUAL_SETPOINT -3.0       // °C - Default glacier temperature when not linked to a station
+#define REACTIVATE_TEMP 20.0       // °C - Temperature to restart cooling after ice melts (should be higher than the dew point at the local station). This should be the local temperature, minus a margin because it will otherwise converge very slowly. Also, because I dont have a thermometer at the exact location of the setup (even if connected to the local weather station, nothing guarantees that the temperature there is the same as inside the device).
+#define DURATION_GLACIER_FREEZING 900000  // milliseconds - Keep cooling after reaching glacier temp. For instance, 5 minutes = 300000 ms. For more ice, we can keep it longer, for instance 15 minutes = 900000 ms.
+#define REACTIVATE_TIMER 1800000     // milliseconds - Auto-restart cooling after this time. 
 // Example: 30 minutes is 1800000 ms
 
 // Drop detector settings
@@ -50,7 +55,7 @@
 #define NEOPIXEL_COUNT 8//64           // Number of LEDs
 #define NEOPIXEL_BRIGHTNESS 255     // 0-255
 #define NEOPIXEL_TEST_MODE false   // Set to true to show constant green for testing
-#define LED_FADE_TOTAL_TIME 3000  // milliseconds - Total fade duration (255 to 1)
+#define LED_FADE_TOTAL_TIME 1500  // milliseconds - Total fade duration (255 to 1)
 
 // Temperature sensor settings
 #define TEMP_SENSOR_RESOLUTION 12  // 9-12 bits

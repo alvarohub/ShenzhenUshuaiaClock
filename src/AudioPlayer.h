@@ -40,7 +40,13 @@ public:
   
   // Play drop sound effect (assumes track 1 is the drop sound)
   void playDropSound() {
+    if (!initialized) return;  // Gracefully fail if hardware not available
     playAudioByIndex(DROP_SOUND_TRACK);
+  }
+  
+  // Check if hardware is working
+  bool isInitialized() const {
+    return initialized;
   }
   
   // List available audio files

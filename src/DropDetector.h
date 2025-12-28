@@ -9,6 +9,7 @@ private:
   int sensorPin;
   int interruptMode;        // RISING or FALLING
   unsigned long debounceMs;
+  bool initialized;
   
   volatile bool interruptTriggered;
   unsigned long lastDetectionTime;
@@ -24,6 +25,7 @@ public:
     : sensorPin(pin),
       interruptMode(mode),
       debounceMs(debounce),
+      initialized(false),
       interruptTriggered(false),
       lastDetectionTime(0),
       interruptEnabled(false) {
@@ -34,6 +36,12 @@ public:
   void begin() {
     pinMode(sensorPin, INPUT_PULLUP);
     enableInterrupt();
+    initialized = true;
+  }
+  
+  // Check if hardware is working
+  bool isInitialized() const {
+    return initialized;
   }
   
   // Enable interrupt detection
@@ -55,6 +63,7 @@ public:
   // Update method - call regularly in loop
   // Returns true if a drop was detected (after debounce)
   bool update() {
+    if (!initialized) return false;  // Gracefully fail if hardware not available
     if (interruptTriggered) {
       unsigned long currentTime = millis();
       
