@@ -20,6 +20,7 @@ private:
   void handleRoot(AsyncWebServerRequest *request);
   void handleStatus(AsyncWebServerRequest *request);
   void handleUpdate(AsyncWebServerRequest *request);
+  void handleDrop(AsyncWebServerRequest *request);
   
 public:
   WebInterface() : server(80), apMode(false), apSSID("DrippingMeteorite") {
@@ -73,6 +74,11 @@ public:
     // API endpoint to update parameters
     server.on("/api/update", HTTP_POST, [this](AsyncWebServerRequest *request) {
       handleUpdate(request);
+    });
+    
+    // API endpoint to trigger drop test
+    server.on("/api/drop", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      handleDrop(request);
     });
     
     // Handle not found

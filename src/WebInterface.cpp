@@ -3,6 +3,8 @@
 #include "WiFiManager.h"
 #include "Thermostat.h"
 #include "TemperatureSensor.h"
+#include "NeoPixelController.h"
+#include "AudioPlayer.h"
 #include <ArduinoJson.h>
 
 // Global instance
@@ -18,6 +20,8 @@ extern int NUM_STATIONS;  // Calculated from stations array size
 extern int setpointMode;
 extern float manualSetpoint;
 extern WiFiManager wifiManager;
+extern NeoPixelController neoPixels;
+extern AudioPlayer audioPlayer;
 
 // Hardware status
 extern bool hwStatusTempSensor;
@@ -466,6 +470,31 @@ void WebInterface::handleUpdate(AsyncWebServerRequest *request) {
     float temp = request->getParam("reactivateTemp", true)->value().toFloat();
     thermostat.setReactivateTemp(temp);
   }
+  
+  String response;
+  serializeJson(doc, response);
+  request->send(200, "application/json", response);
+}
+
+// Handle drop trigger API endpoint
+void WebInterface::handleDrop(AsyncWebServerRequest *request) {
+  JsonDocument doc;
+  
+  // Simulate drop detection (same as physical button)
+  dropCount++; // Increment drop counter
+  
+  // 1. Trigger LED fade cycle
+  neoPixels.onDropDetected(cachedPeltierTemperature, thermostat.getSetPoint());
+  
+  // 2. Play audio sample
+  audioPlayer.playDropSound();
+  
+  // 3. Force peltier to reactivate immediately
+  thermostat.forceActivate();
+  
+  doc["status"] = "ok";
+  doc["message"] = "Drop triggered!";
+  doc["dropCount"] = dropCount;
   
   String response;
   serializeJson(doc, response);
