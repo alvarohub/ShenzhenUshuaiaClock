@@ -41,11 +41,10 @@
 
 // Thermostat settings
 #define THERMOSTAT_HYSTERESIS 0.5  // °C (deprecated - using REACTIVATE_TEMP instead)
-#define MANUAL_SETPOINT -3.0       // °C - Default glacier temperature when not linked to a station
-#define REACTIVATE_TEMP 20.0       // °C - Temperature to restart cooling after ice melts (should be higher than the dew point at the local station). This should be the local temperature, minus a margin because it will otherwise converge very slowly. Also, because I dont have a thermometer at the exact location of the setup (even if connected to the local weather station, nothing guarantees that the temperature there is the same as inside the device).
-#define DURATION_GLACIER_FREEZING 900000  // milliseconds - Keep cooling after reaching glacier temp. For instance, 5 minutes = 300000 ms. For more ice, we can keep it longer, for instance 15 minutes = 900000 ms.
-#define REACTIVATE_TIMER 1800000     // milliseconds - Auto-restart cooling after this time. 
-// Example: 30 minutes is 1800000 ms
+#define MANUAL_SETPOINT -1.0       // °C - Default glacier temperature when not linked to a station
+#define REACTIVATE_TEMP 16.0       // °C - Temperature to restart cooling after ice melts (should be higher than the dew point at the local station). 
+#define DURATION_GLACIER_FREEZING 10000 // 900000  // milliseconds - Keep cooling after reaching glacier temp. For instance, 5 minutes = 300000 ms. For more ice, we can keep it longer, for instance 15 minutes = 900000 ms.
+#define REACTIVATE_TIMER 900000     // milliseconds - Auto-restart cooling after this time. Example: 30 minutes is 1800000 ms. 15 min is 900000 ms.
 
 // Drop detector settings
 #define DROP_DEBOUNCE_MS 50       // milliseconds
@@ -56,6 +55,8 @@
 #define NEOPIXEL_BRIGHTNESS 255     // 0-255
 #define NEOPIXEL_TEST_MODE false   // Set to true to show constant green for testing
 #define LED_FADE_TOTAL_TIME 1500  // milliseconds - Total fade duration (255 to 1)
+#define CUBE_LIGHT true  // Ambient light: blue pulse when cooling, red glow when off
+#define CUBE_LIGHT_BRIGHTNESS 100  // 0-255 - Brightness for ambient cube light (independent of drop flash)
 
 // Temperature sensor settings
 #define TEMP_SENSOR_RESOLUTION 12  // 9-12 bits

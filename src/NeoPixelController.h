@@ -82,11 +82,13 @@ public:
   
   // Fill entire strip with one color
   void fill(uint8_t r, uint8_t g, uint8_t b) {
+    if (!initialized) return;
     strip.fill(strip.Color(r, g, b));
   }
   
   // Fill entire strip with one color (32-bit color)
   void fill(uint32_t color) {
+    if (!initialized) return;
     strip.fill(color);
   }
   
@@ -116,8 +118,7 @@ public:
     fadeStartTime = millis();
     
     // Set full white immediately (scaled by global brightness)
-    uint8_t maxWhite = (uint8_t)(255 * (NEOPIXEL_BRIGHTNESS / 255.0));
-    fill(maxWhite, maxWhite, maxWhite);
+    fill(NEOPIXEL_BRIGHTNESS, NEOPIXEL_BRIGHTNESS, NEOPIXEL_BRIGHTNESS);
     show();
   }
   
@@ -178,55 +179,80 @@ public:
     return timerFadeActive;
   }
   
-  // Startup system check - R/G/B/White sequence, 1 second each
-  void startSystem() {
-    uint8_t level = (uint8_t)(255 * (NEOPIXEL_BRIGHTNESS / 255.0));
+  // Ambient cube lighting - blue pulse when cooling, red glow when off
+  void updateAmbientLight(bool isCooling, bool cubeLightEnabled, uint8_t brightness) {
+    if (timerFadeActive) {
+      return;  // Drop animation active - skip ambient lighting
+    }
     
-    // Red
-    fill(level, 0, 0);
-    show();
-    delay(1000);
+    if (!cubeLightEnabled) {
+      // Turn off ambient lighting
+      fill(0, 0, 0);
+      show();
+      return;
+    }
     
-    // Green
-    fill(0, level, 0);
-    show();
-    delay(1000);
+    static unsigned long lastPulseUpdate = 0;
+    static int pulseDirection = 1;  // 1 = getting brighter, -1 = getting dimmer
+    static uint8_t pulseLevel = 30;  // Current pulse brightness (10-80)
     
-    // Blue
-    fill(0, 0, level);
-    show();
-    delay(1000);
+    // Update pulse every 30ms for smooth animation
+    if (millis() - lastPulseUpdate < 30) {
+      return;
+    }
+    lastPulseUpdate = millis();
     
-    // White
-    fill(level, level, level);
-    show();
-    delay(1000);
-    
-    // Clear
-    fill(0, 0, 0);
-    show();
+    if (isCooling) {
+      // Blue pulsating (smooth breathing effect)
+      pulseLevel += pulseDirection * 2;
+      if (pulseLevel >= 80) {
+        pulseLevel = 80;
+        pulseDirection = -1;
+      } else if (pulseLevel <= 10) {
+        pulseLevel = 10;
+        pulseDirection = 1;
+      }
+      
+      uint8_t blue = (uint8_t)((pulseLevel / 255.0) * brightness);
+      fill(0, 0, blue);
+      show();
+    } else {
+      // Red steady glow (no pulsing to avoid confusion with error)
+      fill(brightness, 0, 0);
+      show();
+    }
   }
   
-  // Error indication - pulse red LEDs forever (hardware problem)
+  // Startup system check - blink green 4 times
+  void startSystem() {
+    for (int i = 0; i < 4; i++) {
+      // Green ON
+      fill(0, NEOPIXEL_BRIGHTNESS, 0);
+      show();
+      delay(1000);
+      
+      // OFF
+      fill(0, 0, 0);
+      show();
+      delay(1000);
+    }
+  }
+  
+  // Error indication - blink red LEDs on/off every second (hardware problem)
   // Does NOT clear the screen so initialization status remains visible
   void pulseRedError() {
-    uint8_t maxRed = (uint8_t)(255 * (NEOPIXEL_BRIGHTNESS / 255.0));
     while (true) {
       M5.update();
       
-      // Pulse red by varying the color value, not the brightness setting
-      for (int level = 10; level <= 255; level += 5) {
-        uint8_t red = (uint8_t)((level / 255.0) * maxRed);
-        fill(red, 0, 0);
-        show();
-        delay(10);
-      }
-      for (int level = 255; level >= 10; level -= 5) {
-        uint8_t red = (uint8_t)((level / 255.0) * maxRed);
-        fill(red, 0, 0);
-        show();
-        delay(10);
-      }
+      // Red ON for 1 second
+      fill(NEOPIXEL_BRIGHTNESS, 0, 0);
+      show();
+      delay(1000);
+      
+      // OFF for 1 second
+      fill(0, 0, 0);
+      show();
+      delay(1000);
     }
   }
   

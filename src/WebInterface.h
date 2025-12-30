@@ -21,6 +21,12 @@ private:
   void handleStatus(AsyncWebServerRequest *request);
   void handleUpdate(AsyncWebServerRequest *request);
   void handleDrop(AsyncWebServerRequest *request);
+  void handleTogglePeltier(AsyncWebServerRequest *request);
+  void handleTestPeltier(AsyncWebServerRequest *request);
+  void handleTestLED(AsyncWebServerRequest *request);
+  void handleTestAudio(AsyncWebServerRequest *request);
+  void handleReset(AsyncWebServerRequest *request);
+  void handleToggleSystem(AsyncWebServerRequest *request);
   
 public:
   WebInterface() : server(80), apMode(false), apSSID("DrippingMeteorite") {
@@ -79,6 +85,32 @@ public:
     // API endpoint to trigger drop test
     server.on("/api/drop", HTTP_POST, [this](AsyncWebServerRequest *request) {
       handleDrop(request);
+    });
+    
+    // API endpoint to toggle Peltier on/off
+    server.on("/api/peltier/toggle", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      handleTogglePeltier(request);
+    });
+    
+    // API endpoints for manual testing
+    server.on("/api/test/peltier", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      handleTestPeltier(request);
+    });
+    server.on("/api/test/led", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      handleTestLED(request);
+    });
+    server.on("/api/test/audio", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      handleTestAudio(request);
+    });
+    
+    // API endpoint to reset to defaults
+    server.on("/api/reset", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      handleReset(request);
+    });
+    
+    // API endpoint to toggle system RUN/PAUSE
+    server.on("/api/system/toggle", HTTP_POST, [this](AsyncWebServerRequest *request) {
+      handleToggleSystem(request);
     });
     
     // Handle not found

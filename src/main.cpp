@@ -9,6 +9,7 @@
 #include "Thermostat.h"
 #include "AudioPlayer.h"
 #include "WebInterface.h"
+#include "SettingsManager.h"
 
 // ============================================
 // DEBUG FLAGS - Set to true to enable testing
@@ -36,6 +37,9 @@ int dropCount = 0;
 int setpointMode = -1;  // Start in manual mode
 float manualSetpoint = MANUAL_SETPOINT;  // Current setpoint value
 
+// System control
+bool systemRunning = true;  // Global flag to pause/resume system updates
+
 // Hardware status tracking
 bool hwStatusTempSensor = false;
 bool hwStatusDropDetector = false;
@@ -51,6 +55,9 @@ const unsigned long DISPLAY_UPDATE_INTERVAL = 500; // Update display every 500ms
 // Temperature sensor timing (non-blocking)
 unsigned long lastTempRead = 0;
 float cachedPeltierTemperature = 20.0; // Cached temperature value
+
+// External references to system components
+extern SettingsManager settingsManager;
 
 // Forward declarations
 void displayWeather(WeatherStation& station, int x, int y, int width, int height);
@@ -73,6 +80,19 @@ void setup() {
   int y = 5;
   M5.Display.setCursor(5, y); y += 15;
   M5.Display.println("Initializing...");
+  
+  // Initialize settings from EEPROM
+  M5.Display.setCursor(5, y); y += 12;
+  M5.Display.print("Settings...");
+  if (settingsManager.begin()) {
+    M5.Display.println("OK");
+    // Load settings into global variables
+    manualSetpoint = settingsManager.currentSettings.manualSetpoint;
+  } else {
+    M5.Display.setTextColor(RED);
+    M5.Display.println("FAIL");
+    M5.Display.setTextColor(GREEN);
+  }
   
   // Track hardware initialization status
   bool hardwareOK = true;
@@ -298,36 +318,41 @@ void loop() {
   // MAIN PROGRAM FLOW
   // ==================================================
   
-  // Read peltier/ice temperature from Dallas sensor (only every TEMP_READ_INTERVAL)
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastTempRead >= TEMP_READ_INTERVAL) {
-    cachedPeltierTemperature = tempSensor.readTemperature();
-    lastTempRead = currentMillis;
+  // Only run system updates if not paused
+  if (systemRunning) {
+    // Read peltier/ice temperature from Dallas sensor (only every TEMP_READ_INTERVAL)
+    if (millis() - lastTempRead >= TEMP_READ_INTERVAL) {
+      cachedPeltierTemperature = tempSensor.readTemperature();
+      lastTempRead = millis();
+    }
+    
+    // Update thermostat with current temperature
+    thermostat.setCurrentTemp(cachedPeltierTemperature);
+    
+    // Run thermostat control logic
+    thermostat.update();
+    
+    // Check for drop detection (update returns true when drop detected with debouncing)
+    if (dropDetector.update()) {
+      // Drop detected! 
+      dropCount++; // Increment drop counter
+      
+      // 1. Trigger LED fade cycle (full white, then fade to black as it cools)
+      neoPixels.onDropDetected(cachedPeltierTemperature, thermostat.getSetPoint());
+      
+      // 2. Play audio sample
+      audioPlayer.playDropSound();
+      
+      // 3. Force peltier to reactivate immediately
+      thermostat.forceActivate();
+    }
   }
   
-  // Update thermostat with current temperature
-  thermostat.setCurrentTemp(cachedPeltierTemperature);
-  
-  // Run thermostat control logic
-  thermostat.update();
-  
-  // Check for drop detection (update returns true when drop detected with debouncing)
-  if (dropDetector.update()) {
-    // Drop detected! 
-    dropCount++; // Increment drop counter
-    
-    // 1. Trigger LED fade cycle (full white, then fade to black as it cools)
-    neoPixels.onDropDetected(cachedPeltierTemperature, thermostat.getSetPoint());
-    
-    // 2. Play audio sample
-    audioPlayer.playDropSound();
-    
-    // 3. Force peltier to reactivate immediately
-    thermostat.forceActivate();
-  }
-  
-  // Update LED brightness based on timer (exponential fade)
+  // Update LED brightness based on timer (always, even when paused)
   neoPixels.updateTimerFade();
+  
+  // Update ambient cube lighting (blue pulse when cooling, red glow when off)
+  neoPixels.updateAmbientLight(thermostat.isCooling(), settingsManager.currentSettings.cubeLight, settingsManager.currentSettings.cubeLightBrightness);
   
   // ==================================================
   // PERIODIC WIFI UPDATES
@@ -354,8 +379,8 @@ void loop() {
   
   // Update display only periodically (non-blocking)
   // Skip display updates during LED fade for smooth animation
-  if (currentMillis - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL && !neoPixels.isFading()) {
-    lastDisplayUpdate = currentMillis;
+  if (millis() - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL && !neoPixels.isFading()) {
+    lastDisplayUpdate = millis();
     displaySystemStatus(cachedPeltierTemperature);
   }
   
